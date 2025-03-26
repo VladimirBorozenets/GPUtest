@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>GPU Benchmark - Dynamic 3D Objects</title>
+    <title>GPU Benchmark - Burn it!</title>
     <style>
         body { margin: 0; overflow: hidden; background: black; }
         #info {
@@ -15,134 +15,200 @@
             background: rgba(0, 0, 0, 0.7);
             padding: 5px;
         }
+        #burnButton {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px 40px;
+            font-size: 24px;
+            font-family: Arial, sans-serif;
+            background: red;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            z-index: 10;
+        }
+        #finalScore {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 36px;
+            font-family: Arial, sans-serif;
+            color: #ff3333;
+            text-align: center;
+            display: none;
+            z-index: 11;
+        }
     </style>
 </head>
 <body>
     <div id="info"></div>
+    <button id="burnButton">🔥 Burn it!</button>
+    <div id="finalScore"></div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
     <script>
-        // Основные переменные
-        let scene, camera, renderer, mesh;
-        let instanceCount = 10; // Начальное количество объектов
-        let segments = 4; // Начальное количество сегментов (граней)
-        let polygonCount = 0; // Количество полигонов
-        let lastPolygonCount = 0; // Для отслеживания изменений
-        let currentMessage = ""; // Текущее сообщение
-        const infoDiv = document.getElementById('info');
-        let rotationX = 0, rotationY = 0; // Сохранение углов поворота
+    let scene, camera, renderer, mesh;
+    let instanceCount = 10;
+    let segments = 4;
+    let polygonCount = 0;
+    let lastPolygonCount = 0;
+    let currentMessage = "";
+    const infoDiv = document.getElementById('info');
+    const burnButton = document.getElementById('burnButton');
+    const finalScore = document.getElementById('finalScore');
+    let rotationX = 0, rotationY = 0;
 
-        // Инициализация сцены
-        function init() {
-            scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            renderer = new THREE.WebGLRenderer();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setClearColor(0x00); // Черный фон
-            document.body.appendChild(renderer.domElement);
+    let autoBurn = false;
+    let maxPolygonsReached = 0;
 
-            // Добавляем туман для эффекта глубины
-            scene.fog = new THREE.Fog(0x000000, 1, 6);
+    function init() {
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000000);
+        document.body.appendChild(renderer.domElement);
+        scene.fog = new THREE.Fog(0x000000, 1, 6);
+        camera.position.z = 6;
+        createObjects();
+        window.addEventListener('resize', onWindowResize);
+        document.addEventListener('keydown', onKeyDown);
+        burnButton.addEventListener('click', startBurn);
+        animate();
+    }
 
-            camera.position.z = 6;
-
-            // Создание начальной геометрии
-            createObjects();
-
-            // Обработка событий
-            window.addEventListener('resize', onWindowResize, false);
-            document.addEventListener('keydown', onKeyDown, false);
-
-            animate();
+    function createObjects() {
+        if (mesh) {
+            rotationX = mesh.rotation.x;
+            rotationY = mesh.rotation.y;
+            scene.remove(mesh);
         }
-
-        // Создание объектов с использованием InstancedMesh
-        function createObjects() {
-            if (mesh) {
-                rotationX = mesh.rotation.x;
-                rotationY = mesh.rotation.y;
-                scene.remove(mesh);
-            }
-
-            // Геометрия сферы с изменяемым количеством сегментов
-            const geometry = new THREE.SphereGeometry(0.5, segments, segments);
-            const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true, fog: true });
-
-            // Подсчет количества полигонов в одной сфере
-            const triangles = geometry.index ? geometry.index.count / 3 : geometry.attributes.position.count - 2;
-            polygonCount = triangles * instanceCount;
-
-            // Создаем InstancedMesh
-            mesh = new THREE.InstancedMesh(geometry, material, instanceCount);
-            const dummy = new THREE.Object3D();
-
-            // Случайное размещение объектов
-            for (let i = 0; i < instanceCount; i++) {
-                const scale = 0.5 + Math.random() * 0.5; // Случайный масштаб от 0.5 до 1
-                dummy.position.set(
-                    (Math.random() - 0.5) * 10, // Случайная позиция в диапазоне [-3, 3]
-                    (Math.random() - 0.5) * 10,
-                    (Math.random() - 0.5) * 10
-                );
-                dummy.scale.set(scale, scale, scale);
-                dummy.updateMatrix();
-                mesh.setMatrixAt(i, dummy.matrix);
-            }
-
-            mesh.instanceMatrix.needsUpdate = true;
-            mesh.rotation.x = rotationX;
-            mesh.rotation.y = rotationY;
-            scene.add(mesh);
-
-            // Обновляем сообщение только при изменении группы
-            updateMessage();
+        const geometry = new THREE.SphereGeometry(0.5, segments, segments);
+        const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true, fog: true });
+        const triangles = geometry.index ? geometry.index.count / 3 : geometry.attributes.position.count - 2;
+        polygonCount = triangles * instanceCount;
+        mesh = new THREE.InstancedMesh(geometry, material, instanceCount);
+        const dummy = new THREE.Object3D();
+        for (let i = 0; i < instanceCount; i++) {
+            const scale = 0.5 + Math.random() * 0.5;
+            dummy.position.set((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10);
+            dummy.scale.set(scale, scale, scale);
+            dummy.updateMatrix();
+            mesh.setMatrixAt(i, dummy.matrix);
         }
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.rotation.x = rotationX;
+        mesh.rotation.y = rotationY;
+        scene.add(mesh);
+        updateMessage();
+    }
 
-        // Обработка изменения размера окна
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
 
-        // Управление стрелками
-        function onKeyDown(event) {
-            if (event.key === 'ArrowUp') {
-                segments = Math.min(segments + 1, 1024); // Ограничение сверху для сегментов
-                createObjects();
-            } else if (event.key === 'ArrowDown' && segments > 3) {
-                segments--;
-                createObjects();
-            } else if (event.key === 'ArrowRight') {
-                instanceCount += 10; // Увеличиваем количество объектов
-                createObjects();
-            } else if (event.key === 'ArrowLeft' && instanceCount > 1) {
-                instanceCount = Math.max(1, instanceCount - 10); // Уменьшаем количество объектов
-                createObjects();
-            }
-        }
+    function onKeyDown(event) {
+        if (autoBurn) return;
+        if (event.key === 'ArrowUp') { segments = Math.min(segments + 1, 1024); createObjects(); }
+        else if (event.key === 'ArrowDown' && segments > 3) { segments--; createObjects(); }
+        else if (event.key === 'ArrowRight') { instanceCount += 10; createObjects(); }
+        else if (event.key === 'ArrowLeft' && instanceCount > 1) { instanceCount = Math.max(1, instanceCount - 10); createObjects(); }
+    }
 
-        // Анимация и подсчет FPS
-        let lastTime = 0, frameCount = 0, fps = 0;
-        function animate(time) {
-            requestAnimationFrame(animate);
-
-            // Вращение объекта
+    let lastTime = 0, frameCount = 0, fps = 0;
+    function animate(time) {
+        requestAnimationFrame(animate);
+        if (mesh) {
             mesh.rotation.x += 0.01;
             mesh.rotation.y += 0.01;
+        }
+        renderer.render(scene, camera);
+        frameCount++;
+        if (time - lastTime >= 1000) {
+            fps = frameCount;
+            frameCount = 0;
+            lastTime = time;
+            updateInfo();
+            if (autoBurn) burnStep();
+        }
+    }
 
-            renderer.render(scene, camera);
+    function startBurn() {
+        autoBurn = true;
+        burnButton.style.display = 'none';
+        finalScore.style.display = 'none';
+        instanceCount = 10;
+        segments = 4;
+        createObjects();
+        maxPolygonsReached = 0;
+    }
 
-            // Подсчет FPS
-            frameCount++;
-            if (time - lastTime >= 1000) {
-                fps = frameCount;
-                frameCount = 0;
-                lastTime = time;
-                updateInfo();
+    function burnStep() {
+        if (fps < 20) {
+            autoBurn = false;
+            finalScore.innerHTML = `🔥 MAX POLYGONS: <b>${polygonCount.toLocaleString()}</b> 🔥<br>Try to beat it!`;
+            finalScore.style.display = 'block';
+            burnButton.style.display = 'block';
+            instanceCount = 10;
+            segments = 4;
+            createObjects();
+        } else {
+            instanceCount += 100;
+            segments += 1;
+            createObjects();
+            if (polygonCount > maxPolygonsReached) {
+                maxPolygonsReached = polygonCount;
             }
         }
+    }
 
-// Humorous benchmark messages in English
+    function updateInfo() {
+        let emotion = fps > 55 ? "😎 Smooth like butter!" : fps > 30 ? "🙂 Acceptable... for now." : fps > 15 ? "😬 It’s struggling a bit." : "🔥 GPU is screaming internally!";
+        infoDiv.innerHTML = `
+            Window size: ${window.innerWidth}x${window.innerHeight}<br>
+            FPS: <b>${fps}</b><br>
+            Polygons: <b>${polygonCount}</b><br>
+            Object quantity: <b>${instanceCount}</b><br>
+            Segments: <b>${segments}</b><br>
+            <br><font color="red">${currentMessage ? `<b>${currentMessage}</b>` : ""}</font>
+            <br><i>${emotion}</i>
+        `;
+    }
+
+    function getPolygonGroup(count) {
+        if (count >= 100 && count < 1000) return 1;
+        if (count >= 1000 && count < 10000) return 2;
+        if (count >= 10000 && count < 100000) return 3;
+        if (count >= 100000 && count < 1000000) return 4;
+        if (count >= 1000000 && count < 10000000) return 5;
+        if (count >= 10000000 && count < 100000000) return 6;
+        if (count >= 100000000 && count < 1000000000) return 7;
+        if (count >= 1000000000 && count < 10000000000) return 8;
+        if (count >= 10000000000 && count < 100000000000) return 9;
+        if (count >= 100000000000) return 10;
+        return 0;
+    }
+
+    function updateMessage() {
+        const currentGroup = getPolygonGroup(polygonCount);
+        const lastGroup = getPolygonGroup(lastPolygonCount);
+        if (currentGroup !== lastGroup) {
+            const key = currentGroup === 10 ? "final" : `group${currentGroup}`;
+            currentMessage = Array.isArray(messages[key]) ? getRandomMessage(messages[key]) : messages[key] || "";
+        }
+        lastPolygonCount = polygonCount;
+    }
+
+    function getRandomMessage(array) {
+        return array[Math.floor(Math.random() * array.length)];
+    }
+
+    // Humorous benchmark messages in English
 const messages = {
     group1: [ // 1,000 - 10,000
         "Come on, keep going! Your GPU is just warming up!",
@@ -299,76 +365,7 @@ const messages = {
     ],
     final: "You monster! Your PC is on fire and you’re still clicking?! I’m out before you blow up the universe!"
 };
-
-        // Функция для выбора случайного сообщения из массива
-        function getRandomMessage(array) {
-            return array[Math.floor(Math.random() * array.length)];
-        }
-
-        // Функция для определения текущей группы
-        function getPolygonGroup(count) {
-            if (count >= 100 && count < 1000) return 1;
-            if (count >= 1000 && count < 10000) return 2;
-            if (count >= 10000 && count < 100000) return 3;
-            if (count >= 100000 && count < 1000000) return 4;
-            if (count >= 1000000 && count < 10000000) return 5;
-            if (count >= 10000000 && count < 100000000) return 6;
-            if (count >= 100000000 && count < 1000000000) return 7;
-            if (count >= 1000000000 && count < 10000000000) return 8;
-            if (count >= 10000000000 && count < 100000000000) return 9;
-            if (count >= 100000000000) return 10;
-            return 0;
-        }
-
-        // Обновление сообщения при изменении группы
-        function updateMessage() {
-            const currentGroup = getPolygonGroup(polygonCount);
-            const lastGroup = getPolygonGroup(lastPolygonCount);
-
-            // Обновляем сообщение только при переходе в новую группу
-            if (currentGroup !== lastGroup) {
-                if (currentGroup === 1) {
-                    currentMessage = getRandomMessage(messages.group1);
-                } else if (currentGroup === 2) {
-                    currentMessage = getRandomMessage(messages.group2);
-                } else if (currentGroup === 3) {
-                    currentMessage = getRandomMessage(messages.group3);
-                } else if (currentGroup === 4) {
-                    currentMessage = getRandomMessage(messages.group4);
-                } else if (currentGroup === 5) {
-                    currentMessage = getRandomMessage(messages.group5);
-                } else if (currentGroup === 6) {
-                    currentMessage = getRandomMessage(messages.group6);
-                } else if (currentGroup === 7) {
-                    currentMessage = getRandomMessage(messages.group7);
-                } else if (currentGroup === 8) {
-                    currentMessage = getRandomMessage(messages.group8);
-                } else if (currentGroup === 9) {
-                    currentMessage = getRandomMessage(messages.group9);
-                } else if (currentGroup === 10) {
-                    currentMessage = messages.final;
-                } else {
-                    currentMessage = "";
-                }
-            }
-
-            lastPolygonCount = polygonCount;
-        }
-
-        // Обновление информации на экране
-        function updateInfo() {
-            infoDiv.innerHTML = `
-                Window size: ${window.innerWidth}x${window.innerHeight}<br>
-                FPS: <b>${fps}</b><br>
-                Polygons: <b>${polygonCount}</b><br>
-                Object quantity: <b>${instanceCount}</b> <font size=-2>Press LEFT and RIGHT keys to change quantity</font><br>
-                Segments: <b>${segments}</b> <font size=-2>Press UP and DOWN keys to change quantity</font><br>
-                <br><font color = red>${currentMessage ? `<b>${currentMessage}</b>` : ""}</font>
-            `;
-        }
-
-        // Запуск
-        init();
+    init();
     </script>
 </body>
 </html>
