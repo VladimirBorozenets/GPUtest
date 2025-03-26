@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>GPU Benchmark - Fractal 3D</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: black;
+        }
+
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 16px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="info"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script>
+        // Основные переменные
+        let scene, camera, renderer, mesh;
+        let instanceCount = 0; // Количество инстансов (кубов)
+        let polygonCount = 0; // Количество полигонов
+        const infoDiv = document.getElementById('info');
+        let recursionDepth = 1; // Уровень рекурсии
+        let splitFactor = 2; // Начальный фактор деления (2 куба на уровень)
+        let rotationX = 0, rotationY = 0; // Сохранение углов поворота
+
+        // Инициализация сцены
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x00); // Черный фон
+            document.body.appendChild(renderer.domElement);
+
+            // Добавляем туман для эффекта глубины
+            scene.fog = new THREE.Fog(0x000000, 1, 4); // Черный туман, начинается с 3, заканчивается на 10
+
+            camera.position.z = 2;
+
+            // Создание начальной геометрии
+            createFractalMesh();
+
+            // Обработка событий
+            window.addEventListener('resize', onWindowResize, false);
+            document.addEventListener('keydown', onKeyDown, false);
+
+            animate();
+        }
+
+        // Создание фрактального объекта с использованием InstancedMesh
+        function createFractalMesh() {
+            if (mesh) {
+                rotationX = mesh.rotation.x;
+                rotationY = mesh.rotation.y;
+                scene.remove(mesh);
+            }
+
+            // Базовая геометрия одного куба
+            const geometry = new THREE.BoxGeometry(1, 1, 1);
+            const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true, fog: true });
+
+            // Подсчет количества инстансов (кубов)
+            instanceCount = Math.pow(splitFactor, recursionDepth);
+            polygonCount = instanceCount * 12; // Каждый куб имеет 12 треугольников
+
+            // Создаем InstancedMesh
+            mesh = new THREE.InstancedMesh(geometry, material, instanceCount);
+            const dummy = new THREE.Object3D();
+            let instanceIndex = 0;
+
+            function addCube(x, y, z, s, depth) {
+                if (depth <= 0) {
+                    dummy.position.set(x, y, z);
+                    dummy.scale.set(s, s, s);
+                    dummy.updateMatrix();
+                    mesh.setMatrixAt(instanceIndex++, dummy.matrix);
+                } else {
+                    s /= 2;
+                    depth--;
+                    if (splitFactor >= 2) {
+                        addCube(x - s, y - s, z - s, s, depth);
+                        addCube(x + s, y + s, z + s, s, depth);
+                    }
+                    if (splitFactor >= 4) {
+                        addCube(x + s, y - s, z - s, s, depth);
+                        addCube(x - s, y + s, z + s, s, depth);
+                    }
+                    if (splitFactor >= 6) {
+                        addCube(x - s, y + s, z - s, s, depth);
+                        addCube(x + s, y - s, z + s, s, depth);
+                    }
+                    if (splitFactor === 8) {
+                        addCube(x + s, y + s, z - s, s, depth);
+                        addCube(x - s, y - s, z + s, s, depth);
+                    }
+                }
+            }
+
+            try {
+                addCube(0, 0, 0, 1, recursionDepth);
+            } catch (e) {
+                console.error("Превышен лимит ресурсов GPU:", e);
+                recursionDepth--;
+                return;
+            }
+
+            mesh.instanceMatrix.needsUpdate = true;
+            mesh.rotation.x = rotationX;
+            mesh.rotation.y = rotationY;
+            scene.add(mesh);
+        }
+
+        // Обработка изменения размера окна
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Управление стрелками
+        function onKeyDown(event) {
+            
+            if (event.key === 'ArrowUp') {
+                if (splitFactor < 8) {
+                    splitFactor = splitFactor +2; // Увеличиваем фактор деления
+                } else {
+                    splitFactor = 2; // Сбрасываем до 2
+                    recursionDepth++; // Переходим на следующий уровень
+                }
+                createFractalMesh();
+            } else if (event.key === 'ArrowDown' && (recursionDepth > 1 || splitFactor > 2)) {
+                if (splitFactor > 2) {
+                    splitFactor = splitFactor - 2; // Уменьшаем фактор деления
+                } else {
+                    splitFactor = 8; // Сбрасываем до 8
+                    recursionDepth--; // Переходим на предыдущий уровень
+                }
+                createFractalMesh();
+            }
+        }
+
+        // Анимация и подсчет FPS
+        let lastTime = 0, frameCount = 0, fps = 0;
+        function animate(time) {
+            requestAnimationFrame(animate);
+
+            // Вращение объекта
+            mesh.rotation.x += 0.01;
+            mesh.rotation.y += 0.01;
+
+            renderer.render(scene, camera);
+
+            // Подсчет FPS
+            frameCount++;
+            if (time - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = time;
+                updateInfo();
+            }
+        }
+
+        // Обновление информации на экране
+        function updateInfo() {
+            infoDiv.innerHTML = `
+                    Размер экрана: ${window.innerWidth}x${window.innerHeight}<br>
+                    FPS: ${fps}<br>
+                    Полигонов: ${polygonCount}<br>
+                    Уровень детализации: ${recursionDepth}<br>
+                    Фактор деления: ${splitFactor}
+                `;
+        }
+
+        // Запуск
+        init();
+    </script>
+</body>
+</html>
