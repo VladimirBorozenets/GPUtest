@@ -2,14 +2,9 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>GPU Benchmark - Fractal 3D</title>
+    <title>GPU Benchmark - Dynamic 3D Objects</title>
     <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background: black;
-        }
-
+        body { margin: 0; overflow: hidden; background: black; }
         #info {
             position: absolute;
             top: 10px;
@@ -28,11 +23,12 @@
     <script>
         // Основные переменные
         let scene, camera, renderer, mesh;
-        let instanceCount = 0; // Количество инстансов (кубов)
+        let instanceCount = 10; // Начальное количество объектов
+        let segments = 4; // Начальное количество сегментов (граней)
         let polygonCount = 0; // Количество полигонов
+        let lastPolygonCount = 0; // Для отслеживания изменений
+        let currentMessage = ""; // Текущее сообщение
         const infoDiv = document.getElementById('info');
-        let recursionDepth = 1; // Уровень рекурсии
-        let splitFactor = 2; // Начальный фактор деления (2 куба на уровень)
         let rotationX = 0, rotationY = 0; // Сохранение углов поворота
 
         // Инициализация сцены
@@ -45,12 +41,12 @@
             document.body.appendChild(renderer.domElement);
 
             // Добавляем туман для эффекта глубины
-            scene.fog = new THREE.Fog(0x000000, 1, 4); // Черный туман, начинается с 3, заканчивается на 10
+            scene.fog = new THREE.Fog(0x000000, 1, 6);
 
-            camera.position.z = 2;
+            camera.position.z = 6;
 
             // Создание начальной геометрии
-            createFractalMesh();
+            createObjects();
 
             // Обработка событий
             window.addEventListener('resize', onWindowResize, false);
@@ -59,67 +55,46 @@
             animate();
         }
 
-        // Создание фрактального объекта с использованием InstancedMesh
-        function createFractalMesh() {
+        // Создание объектов с использованием InstancedMesh
+        function createObjects() {
             if (mesh) {
                 rotationX = mesh.rotation.x;
                 rotationY = mesh.rotation.y;
                 scene.remove(mesh);
             }
 
-            // Базовая геометрия одного куба
-            const geometry = new THREE.BoxGeometry(1, 1, 1);
+            // Геометрия сферы с изменяемым количеством сегментов
+            const geometry = new THREE.SphereGeometry(0.5, segments, segments);
             const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true, fog: true });
 
-            // Подсчет количества инстансов (кубов)
-            instanceCount = Math.pow(splitFactor, recursionDepth);
-            polygonCount = instanceCount * 12; // Каждый куб имеет 12 треугольников
+            // Подсчет количества полигонов в одной сфере
+            const triangles = geometry.index ? geometry.index.count / 3 : geometry.attributes.position.count - 2;
+            polygonCount = triangles * instanceCount;
 
             // Создаем InstancedMesh
             mesh = new THREE.InstancedMesh(geometry, material, instanceCount);
             const dummy = new THREE.Object3D();
-            let instanceIndex = 0;
 
-            function addCube(x, y, z, s, depth) {
-                if (depth <= 0) {
-                    dummy.position.set(x, y, z);
-                    dummy.scale.set(s, s, s);
-                    dummy.updateMatrix();
-                    mesh.setMatrixAt(instanceIndex++, dummy.matrix);
-                } else {
-                    s /= 2;
-                    depth--;
-                    if (splitFactor >= 2) {
-                        addCube(x - s, y - s, z - s, s, depth);
-                        addCube(x + s, y + s, z + s, s, depth);
-                    }
-                    if (splitFactor >= 4) {
-                        addCube(x + s, y - s, z - s, s, depth);
-                        addCube(x - s, y + s, z + s, s, depth);
-                    }
-                    if (splitFactor >= 6) {
-                        addCube(x - s, y + s, z - s, s, depth);
-                        addCube(x + s, y - s, z + s, s, depth);
-                    }
-                    if (splitFactor === 8) {
-                        addCube(x + s, y + s, z - s, s, depth);
-                        addCube(x - s, y - s, z + s, s, depth);
-                    }
-                }
-            }
-
-            try {
-                addCube(0, 0, 0, 1, recursionDepth);
-            } catch (e) {
-                console.error("Not enough resources GPU:", e);
-                recursionDepth--;
-                return;
+            // Случайное размещение объектов
+            for (let i = 0; i < instanceCount; i++) {
+                const scale = 0.5 + Math.random() * 0.5; // Случайный масштаб от 0.5 до 1
+                dummy.position.set(
+                    (Math.random() - 0.5) * 10, // Случайная позиция в диапазоне [-3, 3]
+                    (Math.random() - 0.5) * 10,
+                    (Math.random() - 0.5) * 10
+                );
+                dummy.scale.set(scale, scale, scale);
+                dummy.updateMatrix();
+                mesh.setMatrixAt(i, dummy.matrix);
             }
 
             mesh.instanceMatrix.needsUpdate = true;
             mesh.rotation.x = rotationX;
             mesh.rotation.y = rotationY;
             scene.add(mesh);
+
+            // Обновляем сообщение только при изменении группы
+            updateMessage();
         }
 
         // Обработка изменения размера окна
@@ -131,23 +106,18 @@
 
         // Управление стрелками
         function onKeyDown(event) {
-            
             if (event.key === 'ArrowUp') {
-                if (splitFactor < 8) {
-                    splitFactor = splitFactor +2; // Увеличиваем фактор деления
-                } else {
-                    splitFactor = 2; // Сбрасываем до 2
-                    recursionDepth++; // Переходим на следующий уровень
-                }
-                createFractalMesh();
-            } else if (event.key === 'ArrowDown' && (recursionDepth > 1 || splitFactor > 2)) {
-                if (splitFactor > 2) {
-                    splitFactor = splitFactor - 2; // Уменьшаем фактор деления
-                } else {
-                    splitFactor = 8; // Сбрасываем до 8
-                    recursionDepth--; // Переходим на предыдущий уровень
-                }
-                createFractalMesh();
+                segments = Math.min(segments + 1, 1024); // Ограничение сверху для сегментов
+                createObjects();
+            } else if (event.key === 'ArrowDown' && segments > 3) {
+                segments--;
+                createObjects();
+            } else if (event.key === 'ArrowRight') {
+                instanceCount += 10; // Увеличиваем количество объектов
+                createObjects();
+            } else if (event.key === 'ArrowLeft' && instanceCount > 1) {
+                instanceCount = Math.max(1, instanceCount - 10); // Уменьшаем количество объектов
+                createObjects();
             }
         }
 
@@ -172,16 +142,229 @@
             }
         }
 
+// Humorous benchmark messages in English
+const messages = {
+    group1: [ // 1,000 - 10,000
+        "Come on, keep going! Your GPU is just warming up!",
+        "Not bad, but you can do better! Add more polygons!",
+        "Your computer is handling it... for now!",
+        "Easy stuff! Feels like your GPU is yawning.",
+        "Heating up the GPU? It barely noticed!",
+        "Nice level! Like kindergarten for an RTX 4090.",
+        "Seriously? Your GPU wants something tougher.",
+        "Wow, this is almost Minecraft. In 2012.",
+        "The computer is just stretching. The real fun is coming.",
+        "Spice it up! This is too vanilla.",
+        "GPU just checked its nails while rendering this.",
+        "Everything’s flying! Even the fans are chilling.",
+        "This isn’t even a warm-up, admit it.",
+        "The GPU got bored and went for tea.",
+        "Is this a benchmark or did you open MS Paint?"
+    ],
+    group2: [ // 10,000 - 100,000
+        "Seriously? That’s all you got?",
+        "My grandma knits faster than your GPU renders!",
+        "Are you sure that’s a GPU and not a calculator?",
+        "Come on, don’t be shy, add more polygons!",
+        "Your GPU suspects this is a prank.",
+        "Are you rendering PowerPoint slides?",
+        "This is less of a test and more of a gentle massage.",
+        "At least the fan tried to start... almost.",
+        "If this is your limit, we need to talk.",
+        "GPU is disappointed. It expected greatness.",
+        "Okay, now show us what you can *really* do!",
+        "The speed here makes snails look like racers.",
+        "Your PC yawned and fell asleep. Keep going, I guess.",
+        "GPU checked its email. It’s still waiting.",
+        "Is this a benchmark or a bus stop simulator?"
+    ],
+    group3: [ // 100,000 - 1,000,000
+        "Your GPU is sweating, and you’re still clicking? Brave!",
+        "Looks like your PC is about to say: 'I’m done!'",
+        "Trying to melt your GPU? Keep going!",
+        "Is that FPS lower than my pulse?",
+        "GPU is googling 'early retirement plans'.",
+        "Your computer thinks you hate it now.",
+        "The GPU dreams of being a kettle — less stress, more warmth.",
+        "Your GPU is creaking. That’s not a bug — that’s a cry for help.",
+        "You just awakened the ancient fans!",
+        "Every frame smells more and more like plastic.",
+        "GPU misses the good old days... last week.",
+        "This is fun for us. For the GPU? Not so much.",
+        "If you hear strange noises, it's your GPU praying.",
+        "Your FPS is like Bitcoin: mostly dropping.",
+        "Your GPU is drafting its will. Want to read it?"
+    ],
+    group4: [ // 1,000,000 - 10,000,000
+        "You’re turning your PC into a microwave.",
+        "The plastic’s not melting... yet.",
+        "PC in panic: 'Can I reboot now?'",
+        "GPU wants to work remotely — like, really remotely.",
+        "Trying to run Crysis in 8K Ultra? Bold move.",
+        "Fans now sound like a jet engine.",
+        "Do you control it with a mouse or a fire extinguisher?",
+        "Neighbors feel the heat from this side.",
+        "GPU is applying for asylum in your freezer.",
+        "PC dreams of becoming a calculator — safer job.",
+        "Graphics look nice... but at what cost?",
+        "Time to wear safety goggles and take a step back.",
+        "Cooling system is sobbing in the corner.",
+        "Noise level: 100. FPS: close to zero.",
+        "Only cooler manufacturers approve this madness."
+    ],
+    group5: [ // 10,000,000 - 100,000,000
+        "You just opened a portal to hell — it’s loud and hot!",
+        "Computer sent a message: 'I quit.'",
+        "This isn’t rendering — it’s GPU torture!",
+        "Your GPU is repenting past sins.",
+        "Heard that crack? That was your FPS breaking.",
+        "GPU is melting reality itself.",
+        "Each frame is a heroic struggle.",
+        "Next image might be smoke.",
+        "Neighbors complained about the noise from the abyss.",
+        "Time to stop... or summon an exorcist.",
+        "GPU is wheezing. And gasping.",
+        "Is that a cooler or a jet turbine?",
+        "Heat rises. FPS sinks. Nature is balanced.",
+        "Each pixel is a cry for help.",
+        "If your GPU could cry, it’d flood the case."
+    ],
+    group6: [ // 100,000,000 - 1,000,000,000
+        "GPU went into itself. Might be a while.",
+        "See any frames? I don’t.",
+        "Soon you’ll get a slide that says: 'Farewell.'",
+        "Your GPU wants a serious talk with you.",
+        "FPS has become a philosophical question.",
+        "GPU has embraced Buddhism. It suffers silently.",
+        "PC has achieved inner peace. Fans whisper mantras.",
+        "If you’re still here — blink twice.",
+        "Each frame is a rare artifact.",
+        "GPU is writing its memoirs now.",
+        "Your PC wants a vacation. Without you.",
+        "No frames — just pain and noise.",
+        "You’re a hero. A reckless one, but a hero.",
+        "Reality can’t keep up with you anymore.",
+        "These aren’t lags — they’re cries from inside the case."
+    ],
+    group7: [ // 1,000,000,000 - 10,000,000,000
+        "GPU is no longer rendering. It’s meditating.",
+        "Still hoping to see movement? Cute optimism.",
+        "GPU sent a résumé to Google. Career change?",
+        "Each frame costs a year of life. You’re on frame 3.",
+        "Did you start a benchmark or summon a frost demon?",
+        "GPU is silent. It’s offended.",
+        "Open a window. Your PC needs spiritual air.",
+        "Fan sounds like a washing machine.",
+        "Screen frozen? No, just stuck on frame 1.",
+        "GPU left its body. Spirit is watching you.",
+        "Your PC demands a medal for bravery.",
+        "I’m not sure if you’re benchmarking or avenging something.",
+        "Only three people passed this level. One was a nuclear reactor.",
+        "FPS is now just three letters, not a number.",
+        "From here on, there’s only pain. And bugs."
+    ],
+    group8: [ // 10,000,000,000 - 100,000,000,000
+        "Are you rendering the universe itself?",
+        "GPU sends SOS into space.",
+        "Your graphics card is literally melting. Not metaphorically.",
+        "The computer is scared. I’m scared. Even the mouse panicked.",
+        "This is torture now. Please stop.",
+        "GPU seeks asylum in your fridge.",
+        "Every pixel demands compensation.",
+        "Hear that music? GPU is singing goodbye.",
+        "This isn’t rendering. It’s interpretive death ballet.",
+        "What you see is pain, turned into light.",
+        "GPU signed a petition for mercy.",
+        "You deserve a medal. Or a psychiatric evaluation.",
+        "GPU spun its fan so hard, it left orbit.",
+        "PC says: 'If you’re reading this, I’m still alive.'",
+        "Next frame arrives in the next life."
+    ],
+    group9: [ // 100,000,000,000 - 1,000,000,000,000
+        "You’re not testing. You’re punishing.",
+        "GPU is no longer hardware. It’s a tortured soul.",
+        "You crossed the line — and didn’t look back.",
+        "These aren’t pixels. These are screams in light form.",
+        "If GPU could cry, oceans would form.",
+        "PC confessed its sins and awaits the end.",
+        "You’ve become the Lord of Lag. Rule wisely.",
+        "You’re at the edge. Beyond lies the Blue Screen... and glory.",
+        "GPU waved a white flag... made of smoke.",
+        "You’ve lost FPS, but gained eternity.",
+        "No more polygons. Just you and the void.",
+        "GPU started a philosophy podcast.",
+        "This frame cost 50 degrees Celsius.",
+        "You made GPU believe in reincarnation.",
+        "Stop. Even the universe is overheating."
+    ],
+    final: "You monster! Your PC is on fire and you’re still clicking?! I’m out before you blow up the universe!"
+};
+
+        // Функция для выбора случайного сообщения из массива
+        function getRandomMessage(array) {
+            return array[Math.floor(Math.random() * array.length)];
+        }
+
+        // Функция для определения текущей группы
+        function getPolygonGroup(count) {
+            if (count >= 100 && count < 1000) return 1;
+            if (count >= 1000 && count < 10000) return 2;
+            if (count >= 10000 && count < 100000) return 3;
+            if (count >= 100000 && count < 1000000) return 4;
+            if (count >= 1000000 && count < 10000000) return 5;
+            if (count >= 10000000 && count < 100000000) return 6;
+            if (count >= 100000000 && count < 1000000000) return 7;
+            if (count >= 1000000000 && count < 10000000000) return 8;
+            if (count >= 10000000000 && count < 100000000000) return 9;
+            if (count >= 100000000000) return 10;
+            return 0;
+        }
+
+        // Обновление сообщения при изменении группы
+        function updateMessage() {
+            const currentGroup = getPolygonGroup(polygonCount);
+            const lastGroup = getPolygonGroup(lastPolygonCount);
+
+            // Обновляем сообщение только при переходе в новую группу
+            if (currentGroup !== lastGroup) {
+                if (currentGroup === 1) {
+                    currentMessage = getRandomMessage(messages.group1);
+                } else if (currentGroup === 2) {
+                    currentMessage = getRandomMessage(messages.group2);
+                } else if (currentGroup === 3) {
+                    currentMessage = getRandomMessage(messages.group3);
+                } else if (currentGroup === 4) {
+                    currentMessage = getRandomMessage(messages.group4);
+                } else if (currentGroup === 5) {
+                    currentMessage = getRandomMessage(messages.group5);
+                } else if (currentGroup === 6) {
+                    currentMessage = getRandomMessage(messages.group6);
+                } else if (currentGroup === 7) {
+                    currentMessage = getRandomMessage(messages.group7);
+                } else if (currentGroup === 8) {
+                    currentMessage = getRandomMessage(messages.group8);
+                } else if (currentGroup === 9) {
+                    currentMessage = getRandomMessage(messages.group9);
+                } else if (currentGroup === 10) {
+                    currentMessage = messages.final;
+                } else {
+                    currentMessage = "";
+                }
+            }
+
+            lastPolygonCount = polygonCount;
+        }
+
         // Обновление информации на экране
         function updateInfo() {
             infoDiv.innerHTML = `
-                    Window size: ${window.innerWidth}x${window.innerHeight}<br>
-                    FPS: ${fps}<br>
-                    Poligons: ${polygonCount}<br>
-                    Detalization level: ${recursionDepth}<br>
-                    Devision: ${splitFactor}<br>
-                    Press UP and DOWN keys to load and unload your GPU for testing
-                `;
+                Window size: ${window.innerWidth}x${window.innerHeight}<br>
+                FPS: <b>${fps}</b><br>
+                Polygons: <b>${polygonCount}</b><br>
+                Object quantity: <b>${instanceCount}</b> <font size=-2>Press LEFT and RIGHT keys to change quantity</font><br>
+                Segments: <b>${segments}</b> <font size=-2>Press UP and DOWN keys to change quantity</font><br>
+                <br><font color = red>${currentMessage ? `<b>${currentMessage}</b>` : ""}</font>
+            `;
         }
 
         // Запуск
