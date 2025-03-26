@@ -107,9 +107,9 @@
     }
 
     function onWindowResize() {
-        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.aspect = 1920 / 1080;
         camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setSize(1920, 1080);
     }
 
     function onKeyDown(event) {
@@ -170,7 +170,7 @@
     function updateInfo() {
         let emotion = fps > 55 ? "😎 Smooth like butter!" : fps > 30 ? "🙂 Acceptable... for now." : fps > 15 ? "😬 It’s struggling a bit." : "🔥 GPU is screaming internally!";
         infoDiv.innerHTML = `
-            Window size: ${window.innerWidth}x${window.innerHeight}<br>
+            Window size: 1920x1080<br>
             FPS: <b>${fps}</b><br>
             Polygons: <b>${polygonCount}</b><br>
             Object quantity: <b>${instanceCount}</b><br>
