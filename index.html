@@ -111,7 +111,7 @@
             try {
                 addCube(0, 0, 0, 1, recursionDepth);
             } catch (e) {
-                console.error("Превышен лимит ресурсов GPU:", e);
+                console.error("Not enough resources GPU:", e);
                 recursionDepth--;
                 return;
             }
@@ -175,11 +175,12 @@
         // Обновление информации на экране
         function updateInfo() {
             infoDiv.innerHTML = `
-                    Размер экрана: ${window.innerWidth}x${window.innerHeight}<br>
+                    Window size: ${window.innerWidth}x${window.innerHeight}<br>
                     FPS: ${fps}<br>
-                    Полигонов: ${polygonCount}<br>
-                    Уровень детализации: ${recursionDepth}<br>
-                    Фактор деления: ${splitFactor}
+                    Poligons: ${polygonCount}<br>
+                    Detalization level: ${recursionDepth}<br>
+                    Devision: ${splitFactor}
+                    Press UP and DOWN keys to load and unload your GPU for testing
                 `;
         }
 
